@@ -1,0 +1,24 @@
+# Public demo: `bun run deploy:demo`. Serves the sample config in
+# pulse.config.example.ts with generated data and no sign-in. It has no KV and
+# no crons; snapshots live in the edge cache. Change the route to your own.
+name = "pulse-demo"
+main = "src/index.ts"
+compatibility_date = "2026-08-12"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+routes = [{ pattern = "pulse-demo.arach.dev", custom_domain = true }]
+
+# Always the sample, even when a private pulse.config.ts exists.
+alias = { "pulse-config" = "./pulse.config.example.ts" }
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
+
+[vars]
+ENVIRONMENT = "demo"
+MOCK_GA4 = "true"
+PUBLIC_DEMO = "true"
+CACHE_FRESH_TTL_SECONDS = "60"

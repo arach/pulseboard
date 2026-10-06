@@ -1,0 +1,2 @@
+// Applies the saved theme before first paint. A file, not inline, to satisfy the CSP.
+!function(k,t,p){try{var d=document.documentElement,s=JSON.parse(localStorage.getItem(k)||'{}'),x=s.theme||t,m='system'===x?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):x;d.dataset.hudsonTheme=m;d.dataset.hudsonTemplate=p}catch(e){document.documentElement.dataset.hudsonTheme='dark';document.documentElement.dataset.hudsonTemplate=p}}('pulse.theme','system','pulse');

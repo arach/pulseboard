@@ -1,0 +1,56 @@
+# Copy to wrangler.toml (gitignored) and fill in your route, KV namespace ids
+# and GitHub allowlist. Tests fall back to this file when wrangler.toml is absent.
+name = "pulse"
+main = "src/index.ts"
+compatibility_date = "2026-08-12"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+routes = [{ pattern = "pulse.example.com", custom_domain = true }]
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
+
+# `bunx wrangler kv namespace create PULSE_DATA`
+[[kv_namespaces]]
+binding = "PULSE_DATA"
+id = "00000000000000000000000000000000"
+
+[triggers]
+# One cron per daily source; keep in sync with CRON_SOURCES in src/index.ts.
+crons = ["0,30 * * * *", "10,40 * * * *", "20 * * * *"]
+
+[vars]
+ENVIRONMENT = "production"
+MOCK_GA4 = "false"
+CACHE_FRESH_TTL_SECONDS = "60"
+OSN_AUTH_BASE_URL = "https://mesh.oscout.net"
+# Numeric GitHub user ids allowed to sign in, comma-separated.
+PULSE_ALLOWED_GITHUB_IDS = "1"
+PULSE_SESSION_TTL_SECONDS = "2592000"
+
+# Secrets (set via `wrangler secret put`, never commit):
+# GOOGLE_SERVICE_ACCOUNT_EMAIL
+# GOOGLE_PRIVATE_KEY
+# OSN_PULSE_HANDOFF_SECRET
+# PULSE_SESSION_SECRET
+
+# Local mock dev: `bun run dev:mock`. Generated data, no sign-in.
+[env.development]
+routes = []
+vars = { ENVIRONMENT = "development", MOCK_GA4 = "true", AUTH_DEV_BYPASS = "true", CACHE_FRESH_TTL_SECONDS = "60", OSN_AUTH_BASE_URL = "https://mesh.oscout.net", PULSE_ALLOWED_GITHUB_IDS = "1", PULSE_SESSION_TTL_SECONDS = "2592000" }
+
+[[env.development.kv_namespaces]]
+binding = "PULSE_DATA"
+id = "00000000000000000000000000000000"
+
+[env.production]
+routes = []
+vars = { ENVIRONMENT = "production", MOCK_GA4 = "false", CACHE_FRESH_TTL_SECONDS = "60", OSN_AUTH_BASE_URL = "https://mesh.oscout.net", PULSE_ALLOWED_GITHUB_IDS = "1", PULSE_SESSION_TTL_SECONDS = "2592000" }
+
+[[env.production.kv_namespaces]]
+binding = "PULSE_DATA"
+id = "00000000000000000000000000000000"
+

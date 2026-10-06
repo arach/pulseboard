@@ -1,0 +1,24 @@
+{
+  "name": "pulse",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "dev:mock": "wrangler dev --env development",
+    "build:web": "cd web && bun install --frozen-lockfile && bun run build",
+    "deploy": "bun run build:web && wrangler deploy",
+    "deploy:demo": "bun run build:web && wrangler deploy --config wrangler.demo.toml",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "check": "bun run typecheck && bun run test"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.8.57",
+    "@cloudflare/workers-types": "^5.20260811.1",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.28.1"
+  }
+}

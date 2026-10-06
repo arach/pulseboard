@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+.env
+.env.*
+*.pem
+*.json.key
+service-account*.json
+.DS_Store
+# OpenScout local state
+.openscout/project.json
+pulse.config.ts
+wrangler.toml

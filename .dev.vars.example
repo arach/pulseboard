@@ -1,0 +1,13 @@
+# Example local secrets: copy to `.dev.vars` (never commit)
+
+MOCK_GA4=false
+# GOOGLE_SERVICE_ACCOUNT_EMAIL=your-sa@project.iam.gserviceaccount.com
+# GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+
+# Local mock dev (`bun run dev:mock`) uses wrangler [env.development]:
+# ENVIRONMENT=development, AUTH_DEV_BYPASS=true, MOCK_GA4=true
+# For live local sign-in through OScout instead of the bypass, set:
+# ENVIRONMENT=development
+# AUTH_DEV_BYPASS=false
+# OSN_PULSE_HANDOFF_SECRET=<matches OScout>
+# PULSE_SESSION_SECRET=<random>
