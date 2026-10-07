@@ -8,8 +8,8 @@ import type { NpmPayload, SearchPayload } from "./types";
 
 export const SECTIONS = [
   { id: "overview", label: "Overview" },
-  { id: "portfolio", label: "Portfolio" },
   { id: "alive", label: "Alive" },
+  { id: "portfolio", label: "Portfolio" },
   { id: "search", label: "Search" },
   { id: "realtime", label: "Realtime" },
   { id: "npm", label: "npm" },

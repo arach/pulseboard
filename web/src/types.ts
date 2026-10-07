@@ -42,12 +42,30 @@ export interface RealtimeArrival {
   activeUsers: number;
 }
 
+export interface RealtimeEvent {
+  minutesAgo: number;
+  eventName: string;
+  property: string;
+  propertyId: string;
+  count: number;
+}
+
+export interface RealtimePage {
+  title: string;
+  property: string;
+  propertyId: string;
+  activeUsers: number;
+  views: number;
+}
+
 export interface RealtimePayload {
   totalActiveUsers: number;
   totalNote: string;
   properties: PropertyResult[];
   countries: CountryBreakdown[];
   arrivals?: RealtimeArrival[];
+  pages?: RealtimePage[];
+  events?: RealtimeEvent[];
   fetchedAt: string;
   cache: CacheMetadata;
   partialFailure: boolean;

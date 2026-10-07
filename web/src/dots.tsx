@@ -95,72 +95,6 @@ export function HalftoneGlyph({
   );
 }
 
-/* ── Heartbeat band ─────────────────────────────────────────────────────── */
-
-// One heartbeat period in [0, 1): baseline, P bump, QRS spike, T bump.
-function beat(t: number) {
-  const g = (mu: number, s: number, a: number) => a * Math.exp(-(((t - mu) / s) ** 2));
-  return g(0.18, 0.035, 0.18) + g(0.3, 0.012, -0.22) + g(0.33, 0.014, 1) + g(0.36, 0.012, -0.35) + g(0.56, 0.06, 0.3);
-}
-
-export function HeartbeatBand({ cols = 180, rows = 13, beats = 3 }: { cols?: number; rows?: number; beats?: number }) {
-  const pitch = 8;
-  const w = cols * pitch;
-  const h = rows * pitch;
-  const dots = useMemo(() => {
-    const out: Array<{ cx: number; cy: number; o: number; r: number }> = [];
-    for (let i = 0; i < cols; i++) {
-      // Sample within the column so a narrow QRS spike still draws as a vertical run of dots.
-      let lo = Infinity;
-      let hi = -Infinity;
-      for (let s = 0; s <= 8; s++) {
-        const t = (((i + s / 8) / cols) * beats) % 1;
-        const y = 0.6 - beat(t) * 0.5; // 0 top, 1 bottom
-        lo = Math.min(lo, y);
-        hi = Math.max(hi, y);
-      }
-      for (let j = 0; j < rows; j++) {
-        const y = (j + 0.5) / rows;
-        const gap = y < lo ? lo - y : y > hi ? y - hi : 0;
-        const near = Math.exp(-((gap * rows) ** 2) / 0.6);
-        out.push({
-          cx: (i + 0.5) * pitch,
-          cy: (j + 0.5) * pitch,
-          o: 0.08 + near * 0.92,
-          r: 0.9 + near * 1.5,
-        });
-      }
-    }
-    return out;
-  }, [cols, rows, beats]);
-
-  const layer = (lit: boolean) =>
-    dots.map((d, i) => (
-      <circle key={i} cx={d.cx} cy={d.cy} r={d.r} fill="currentColor" opacity={lit ? Math.min(1, d.o * 1.6) : d.o * 0.55} />
-    ));
-
-  return (
-    <svg className="heartbeat" viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
-      <defs>
-        <linearGradient id="hb-sweep" x1="0" x2="1" y1="0" y2="0">
-          <stop offset="0" stopColor="#fff" stopOpacity="0" />
-          <stop offset="0.85" stopColor="#fff" stopOpacity="0.9" />
-          <stop offset="1" stopColor="#fff" stopOpacity="0" />
-        </linearGradient>
-        <mask id="hb-mask" maskUnits="userSpaceOnUse" x="0" y="0" width={w} height={h}>
-          <rect className="heartbeat-sweep" x={-w * 0.3} y="0" width={w * 0.3} height={h} fill="url(#hb-sweep)">
-            <animate attributeName="x" from={-w * 0.3} to={w} dur="5.5s" repeatCount="indefinite" />
-          </rect>
-        </mask>
-      </defs>
-      <g>{layer(false)}</g>
-      <g className="heartbeat-lit" mask="url(#hb-mask)">
-        {layer(true)}
-      </g>
-    </svg>
-  );
-}
-
 /* ── Portfolio dot columns ──────────────────────────────────────────────── */
 
 const RAMP = [1, 0.78, 0.6, 0.46, 0.35, 0.26, 0.19, 0.14];
@@ -172,14 +106,16 @@ export function DotColumns({ daily, families }: { daily: PortfolioDailyPoint[]; 
 
   const pitch = 10;
   const r = 3.1;
-  const maxRows = 24;
-  const dotsPerRow = 2;
+  // Short and wide: the trend matters here, the exact counts live in the tables.
+  const maxRows = 10;
+  const dotsPerRow = 3;
   const max = Math.max(1, ...daily.map((d) => d.sessions));
   // Smallest whole sessions-per-dot that fits, then only as many rows as the peak needs
   // (plus one of headroom) so the busiest day reaches the top instead of floating at 70%.
   const perDot = Math.max(1, Math.ceil(max / (maxRows * dotsPerRow)));
-  const rows = Math.min(maxRows, Math.max(8, Math.ceil(max / (perDot * dotsPerRow)) + 1));
+  const rows = Math.min(maxRows, Math.max(6, Math.ceil(max / (perDot * dotsPerRow)) + 1));
   const dayWidth = dotsPerRow * pitch + pitch * 0.9;
+  const colMid = (dotsPerRow * pitch) / 2;
   const padLeft = 34;
   const padBottom = 26;
   const width = padLeft + daily.length * dayWidth;
@@ -230,7 +166,7 @@ export function DotColumns({ daily, families }: { daily: PortfolioDailyPoint[]; 
           if (i < 6) return "";
           const win = daily.slice(i - 6, i + 1);
           const avg = win.reduce((sum, d) => sum + d.sessions, 0) / win.length;
-          return `${i === 6 ? "M" : "L"}${(padLeft + i * dayWidth + pitch).toFixed(1)},${yOf(avg).toFixed(1)}`;
+          return `${i === 6 ? "M" : "L"}${(padLeft + i * dayWidth + colMid).toFixed(1)},${yOf(avg).toFixed(1)}`;
         })
         .join(""),
     [daily, top],
@@ -276,7 +212,7 @@ export function DotColumns({ daily, families }: { daily: PortfolioDailyPoint[]; 
                 <rect x={x0 - pitch * 0.45} y={0} width={dayWidth} height={rows * pitch} fill="transparent" />
                 {out}
                 {((dayIdx % 7 === 0 && daily.length - 1 - dayIdx > 3) || dayIdx === daily.length - 1) && (
-                  <text x={x0 + pitch} y={rows * pitch + 18} textAnchor="middle" className="axis-label">
+                  <text x={x0 + colMid} y={rows * pitch + 18} textAnchor="middle" className="axis-label">
                     {dayIdx === daily.length - 1 ? "Today" : shortDate(daily[dayIdx].date)}
                   </text>
                 )}
@@ -289,7 +225,7 @@ export function DotColumns({ daily, families }: { daily: PortfolioDailyPoint[]; 
         {hovered && hoverDay != null && (
           <div
             className="dotcols-tip"
-            style={{ left: `${((padLeft + hoverDay * dayWidth + pitch) / width) * 100}%` }}
+            style={{ left: `${((padLeft + hoverDay * dayWidth + colMid) / width) * 100}%` }}
           >
             <div className="tip-date">{shortDate(hovered.date)}</div>
             <div className="tip-total">{fmt(hovered.sessions)} sessions</div>
@@ -375,9 +311,12 @@ function DotStrip({
   const width = padLeft + (values.length + pending) * stripDayWidth;
   const yOf = (v: number) => plotH * (1 - v / top);
   const ticks = niceTicks(top);
+  // The series name sits on its own line above the plot so it never meets the scale.
+  const padTop = 16;
   return (
-    <svg viewBox={`0 0 ${width} ${plotH + padBottom}`} className="strip-svg" role="img" aria-label={`${label} per day`} onMouseLeave={() => onHover(null)}>
+    <svg viewBox={`0 0 ${width} ${padTop + plotH + padBottom}`} className="strip-svg" role="img" aria-label={`${label} per day`} onMouseLeave={() => onHover(null)}>
       <text x={0} y={8} className="axis-label strip-name">{label}</text>
+      <g transform={`translate(0 ${padTop})`}>
       {ticks.map((v) => (
         <g key={v}>
           <line x1={padLeft - 4} x2={width} y1={yOf(v)} y2={yOf(v)} className="gridline" />
@@ -416,6 +355,7 @@ function DotStrip({
           </g>
         );
       })}
+      </g>
     </svg>
   );
 }

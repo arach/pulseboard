@@ -35,6 +35,25 @@ export interface CountryBreakdown {
   shareOfTotal: number;
 }
 
+/** Event count for one minute × event on one property; feeds the live log. */
+export interface RealtimeEvent {
+  minutesAgo: number;
+  eventName: string;
+  property: string;
+  propertyId: string;
+  count: number;
+}
+
+/** One page title on one property, last 30 minutes; feeds "Pages now". */
+export interface RealtimePage {
+  /** Page title (GA4 `unifiedScreenName`). Realtime reports have no URL path. */
+  title: string;
+  property: string;
+  propertyId: string;
+  activeUsers: number;
+  views: number;
+}
+
 /** One city × property × minute bucket from GA4 realtime; feeds the arrivals ticker. */
 export interface RealtimeArrival {
   city: string;
@@ -76,6 +95,10 @@ export interface RealtimePayload {
   countries: CountryBreakdown[];
   /** Most recent arrivals first. Optional so payloads cached before this field still parse. */
   arrivals?: RealtimeArrival[];
+  /** Busiest page titles across properties. Optional so older snapshots still parse. */
+  pages?: RealtimePage[];
+  /** Recent events, newest minute first. Optional so older snapshots still parse. */
+  events?: RealtimeEvent[];
   fetchedAt: string;
   cache: CacheMetadata;
   partialFailure: boolean;
@@ -279,6 +302,8 @@ export interface PropertyFetchResult {
   activeUsers: number;
   countries: Array<{ country: string; activeUsers: number }>;
   arrivals?: RealtimeArrival[];
+  pages?: RealtimePage[];
+  events?: RealtimeEvent[];
   quota: QuotaMetadata | null;
   status: "ok" | "error";
   error?: string;

@@ -3,6 +3,7 @@ import { env } from "cloudflare:test";
 import {
   clearInFlightRefreshes,
   getSnapshot,
+  snapshotCacheRequest,
   LAST_REFRESH_FAILED,
   readSnapshot,
   refreshSource,
@@ -30,7 +31,7 @@ describe("snapshot store", () => {
     now = T0;
     vi.spyOn(Date, "now").mockImplementation(() => now);
     for (const source of ["overview", "search", "npm"]) await env.PULSE_DATA!.delete(`snapshot:v1:${source}`);
-    await caches.default.delete(new Request("https://pulse.internal/snapshot/realtime"));
+    await caches.default.delete(snapshotCacheRequest(env, "realtime"));
   });
 
   afterEach(() => {
@@ -129,6 +130,16 @@ describe("snapshot store", () => {
 
     at(125);
     expect((await getSnapshot(env, "realtime", { ...realtime, fetchLive })).payload).toMatchObject({ n: 2 });
+  });
+
+  it("keeps realtime snapshots apart between workers on one zone", async () => {
+    const demo = { ...env, ENVIRONMENT: "demo", MOCK_GA4: "true" } as Env;
+    await caches.default.delete(snapshotCacheRequest(demo, "realtime"));
+    await refreshSource(env, "realtime", async () => ({ n: "live" }));
+    expect(await readSnapshot(demo, "realtime")).toBeNull();
+    await refreshSource(demo, "realtime", async () => ({ n: "mock" }));
+    expect((await readSnapshot(env, "realtime"))?.payload).toEqual({ n: "live" });
+    expect((await readSnapshot(demo, "realtime"))?.payload).toEqual({ n: "mock" });
   });
 
   it("maps each cron to one daily source", async () => {

@@ -5,8 +5,9 @@ import { HudTable, type HudTableColumn } from "hudsonkit/table";
 import { useTheme } from "hudsonkit/theme";
 import { ArrowUpRight, Monitor, Moon, RefreshCw, Sun } from "lucide-react";
 import { useNow, usePulseData } from "./data";
-import { DotColumns, DotMeter, HalftoneGlyph, HeartbeatBand, NpmStrip, SearchStrips, TrendLine, type GlyphKind } from "./dots";
+import { DotColumns, DotMeter, HalftoneGlyph, NpmStrip, SearchStrips, TrendLine, type GlyphKind } from "./dots";
 import { ArrivalTicker } from "./ticker";
+import { LiveLog } from "./log";
 import { DotGlobe } from "./globe";
 import { ago, fmt, fmtCompact, lastActive, pct, signedPct } from "./format";
 import { deriveSignals, links, propertyDirectory, type PropertyRef, type Signal } from "./links";
@@ -101,34 +102,35 @@ export function App() {
         </>
       }
     >
+      {rt && <LiveLog events={rt.events ?? []} arrivals={rt.arrivals ?? []} fetchedAt={rt.fetchedAt} />}
       <main className="page">
         <Hero rt={rt} ov={ov} sc={sc} np={np} error={realtime.error} />
         <Signals signals={signals} />
 
         <div className="band">
-          <HeartbeatBand rows={9} />
+          {rt && <NowPanel rt={rt} />}
           {rt && <ArrivalTicker arrivals={rt.arrivals ?? []} />}
         </div>
 
         <Section
+          id="alive"
+          glyph="wave"
+          index="01"
+          title={<>Recently <em>alive</em></>}
+          kicker="Where activity appeared, and whether it is changing"
+        >
+          {ov ? <AliveTable rows={ov.properties} refs={refs} /> : <Placeholder error={overview.error} />}
+        </Section>
+
+        <Section
           id="portfolio"
           glyph="terrain"
-          index="01"
+          index="02"
           title={<>Portfolio <em>activity</em></>}
           kicker="Daily sessions by product family · last 30 days"
           meta={ov && <Freshness payload={ov} now={now} />}
         >
           {ov ? <DotColumns daily={ov.daily} families={ov.families} /> : <Placeholder error={overview.error} />}
-        </Section>
-
-        <Section
-          id="alive"
-          glyph="wave"
-          index="02"
-          title={<>Recently <em>alive</em></>}
-          kicker="Where activity appeared, and whether it is changing"
-        >
-          {ov ? <AliveTable rows={ov.properties} refs={refs} /> : <Placeholder error={overview.error} />}
         </Section>
 
         <Section
@@ -143,13 +145,9 @@ export function App() {
         </Section>
 
         <div className="split" id="realtime">
-          <Section glyph="radar" index="04" title={<>Realtime <em>properties</em></>} kicker="Active users · last 30 minutes">
+          <Section glyph="radar" index="04" title={<>Realtime <em>pages</em></>} kicker="Page titles with active users · last 30 minutes">
             {rt ? (
-              <MeterList
-                rows={[...rt.properties]
-                  .sort((a, b) => b.activeUsers - a.activeUsers)
-                  .map((p) => ({ key: p.id, label: p.name, value: p.activeUsers, share: p.shareOfTotal, error: p.status === "error", href: links.ga4Realtime(p.id) }))}
-              />
+              rt.pages?.length ? <MeterList rows={pageRows(rt)} /> : <Placeholder error={null} />
             ) : (
               <Placeholder error={realtime.error} />
             )}
@@ -636,20 +634,69 @@ function AliveTable({ rows, refs }: { rows: PropertyActivitySummary[]; refs: Map
   );
 }
 
-function MeterList({ rows }: { rows: Array<{ key: string; label: string; value: number; share: number; error?: boolean; href?: string }> }) {
+const NOW_ROWS = 8;
+
+/** Above the fold: what people are reading right now, next to where they are. */
+function NowPanel({ rt }: { rt: RealtimePayload }) {
+  const pages = pageRows(rt).slice(0, NOW_ROWS);
+  const properties = [...rt.properties]
+    .sort((a, b) => b.activeUsers - a.activeUsers)
+    .slice(0, NOW_ROWS)
+    .map((p) => ({ key: p.id, label: p.name, value: p.activeUsers, share: p.shareOfTotal, error: p.status === "error", href: links.ga4Realtime(p.id) }));
   return (
-    <ol className="meters">
+    <div className="now">
+      <div className="now-col">
+        <div className="kicker now-head">Pages now · 30 min</div>
+        {pages.length ? <MeterList rows={pages} compact /> : <p className="now-empty">No page data yet</p>}
+      </div>
+      <div className="now-col">
+        <div className="kicker now-head">Properties now · 30 min</div>
+        <MeterList rows={properties} compact />
+      </div>
+    </div>
+  );
+}
+
+function pageRows(rt: RealtimePayload): MeterRow[] {
+  return (rt.pages ?? []).map((p) => ({
+    key: `${p.propertyId}:${p.title}`,
+    label: p.title,
+    sub: p.property,
+    value: p.activeUsers,
+    share: rt.totalActiveUsers > 0 ? p.activeUsers / rt.totalActiveUsers : 0,
+    href: links.ga4Realtime(p.propertyId),
+  }));
+}
+
+interface MeterRow {
+  key: string;
+  label: string;
+  /** Secondary label, e.g. the property a page belongs to. */
+  sub?: string;
+  value: number;
+  share: number;
+  error?: boolean;
+  href?: string;
+}
+
+function MeterList({ rows, compact = false }: { rows: MeterRow[]; compact?: boolean }) {
+  return (
+    <ol className={compact ? "meters is-compact" : "meters"}>
       {rows.map((r) => (
         <li key={r.key} className={r.error ? "is-error" : undefined}>
           {r.href ? (
-            <a className="meter-label meter-link" href={r.href} target="_blank" rel="noopener noreferrer" title={`Open ${r.label} in GA4 realtime`}>
+            <a className="meter-label meter-link" href={r.href} target="_blank" rel="noopener noreferrer" title={`Open ${r.sub ?? r.label} in GA4 realtime`}>
               {r.label}
+              {r.sub && <span className="meter-sub">{r.sub}</span>}
               <ArrowUpRight size={11} strokeWidth={1.6} aria-hidden="true" />
             </a>
           ) : (
-            <span className="meter-label">{r.label}</span>
+            <span className="meter-label">
+              {r.label}
+              {r.sub && <span className="meter-sub">{r.sub}</span>}
+            </span>
           )}
-          <DotMeter ratio={r.share} />
+          <DotMeter ratio={r.share} count={compact ? 16 : 24} />
           <span className="num">{fmt(r.value)}</span>
           <span className="num muted">{pct(r.share)}</span>
         </li>

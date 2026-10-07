@@ -18,7 +18,7 @@ const ISO2: Record<string, string> = {
 
 const NOT_SET = "(not set)";
 
-function place(a: RealtimeArrival): { city: string; cc: string } {
+export function place(a: RealtimeArrival): { city: string; cc: string } {
   const cc = a.country === NOT_SET ? "" : (ISO2[a.country] ?? a.country);
   if (a.city === NOT_SET || !a.city) return { city: a.country === NOT_SET ? "Somewhere" : a.country, cc: "" };
   return { city: a.city, cc };

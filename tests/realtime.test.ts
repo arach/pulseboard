@@ -82,6 +82,43 @@ describe("fetchPropertyRealtime", () => {
   });
 });
 
+describe("fetchPropertyRealtime extras", () => {
+  it("adds live page titles and keeps the property when the arrivals report fails", async () => {
+    const originalFetch = globalThis.fetch;
+    const row = (dims: string[], metrics: string[]) => ({
+      dimensionValues: dims.map((value) => ({ value })),
+      metricValues: metrics.map((value) => ({ value })),
+    });
+    globalThis.fetch = async (_input, init) => {
+      const body = String(init?.body);
+      if (body.includes("eventName")) {
+        return Response.json({ rows: [row(["00", "click"], ["2"])] });
+      }
+      if (body.includes("unifiedScreenName")) {
+        return Response.json({ rows: [row(["Home"], ["3", "7"]), row(["Pricing"], ["1", "2"])] });
+      }
+      if (body.includes("minutesAgo")) return new Response("down", { status: 500 });
+      return Response.json({ rows: [row(["France"], ["4"])] });
+    };
+
+    try {
+      const result = await fetchPropertyRealtime(PROPERTIES[0], "token");
+      expect(result.status).toBe("ok");
+      expect(result.arrivals).toEqual([]);
+      expect(result.pages?.map((p) => [p.title, p.activeUsers, p.views])).toEqual([
+        ["Home", 3, 7],
+        ["Pricing", 1, 2],
+      ]);
+      expect(result.pages?.[0].property).toBe(PROPERTIES[0].name);
+      expect(result.events).toEqual([
+        { minutesAgo: 0, eventName: "click", property: PROPERTIES[0].name, propertyId: PROPERTIES[0].id, count: 2 },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
 describe("sanitizeForLog", () => {
   it("redacts sensitive fields from upstream bodies", () => {
     const sanitized = sanitizeForLog(

@@ -1,4 +1,4 @@
-import { mergeArrivals } from "./aggregate";
+import { mergeArrivals, mergeEvents, mergePages } from "./aggregate";
 import { CONFIG, PROPERTIES, TOTAL_NOTE } from "./config";
 import { buildOverviewPayload } from "./ga4/historical";
 import type { PropertyHistoryResult } from "./ga4/historical";
@@ -60,12 +60,50 @@ export function buildMockRealtimePayload(): RealtimePayload {
     }),
   ]);
 
+  // Split each property's live users across a few page titles, busiest first.
+  const titles = ["Home", "Docs · Getting started", "Pricing", "Changelog", "Blog · Why local-first", "Download"];
+  const pages = mergePages(
+    properties.map((property, index) => {
+      let left = property.activeUsers;
+      return titles.slice(0, 2 + (index % 4)).flatMap((title, rank) => {
+        const activeUsers = rank === 0 ? Math.ceil(left / 2) : Math.ceil(left / 3);
+        left -= activeUsers;
+        return activeUsers > 0
+          ? [{ title, property: property.name, propertyId: property.id, activeUsers, views: activeUsers * (2 + ((index + rank) % 3)) }]
+          : [];
+      });
+    }),
+  );
+
+  // Events are seeded by wall-clock minute, so each refresh keeps earlier minutes
+  // stable and adds a new one, the way a live log grows.
+  const eventNames = ["page_view", "page_view", "page_view", "scroll", "user_engagement", "click", "session_start", "first_visit", "file_download", "copy_install"];
+  const nowMinute = Math.floor(Date.now() / 60_000);
+  const events = mergeEvents([
+    Array.from({ length: 30 }, (_, minutesAgo) => {
+      const minute = nowMinute - minutesAgo;
+      return Array.from({ length: 1 + (minute % 3) }, (_, k) => {
+        const h = (minute * 7919 + k * 104729) >>> 0;
+        const property = properties[h % properties.length];
+        return {
+          minutesAgo,
+          eventName: eventNames[(h >>> 3) % eventNames.length],
+          property: property.name,
+          propertyId: property.id,
+          count: 1 + ((h >>> 7) % 4),
+        };
+      });
+    }).flat(),
+  ]);
+
   return {
     totalActiveUsers,
     totalNote: TOTAL_NOTE,
     properties,
     countries,
     arrivals,
+    pages,
+    events,
     fetchedAt: new Date().toISOString(),
     cache: { fresh: true, ageSeconds: 0, stale: false, source: "live" },
     partialFailure: false,

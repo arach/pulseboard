@@ -31,6 +31,13 @@ export const BOOTSTRAP_RETRY_SECONDS = 60;
 
 const KV_PREFIX = "snapshot:v1:";
 const CACHE_ORIGIN = "https://pulse.internal/snapshot/";
+// Workers on one zone share `caches.default`, so the key carries the
+// environment and data mode. Otherwise the public demo would serve production's
+// realtime snapshot, and production the demo's.
+export function snapshotCacheRequest(env: Env, source: SourceName): Request {
+  const mode = env.MOCK_GA4 === "true" ? "mock" : "live";
+  return new Request(`${CACHE_ORIGIN}${env.ENVIRONMENT ?? "unknown"}/${mode}/${source}`);
+}
 // Realtime turns over every minute, so it lives in the Cache API rather than
 // spending KV writes. Edge caches can evict it; it simply refetches.
 const REALTIME_CACHE_SECONDS = 86_400;
@@ -45,7 +52,7 @@ export async function readSnapshot<T>(env: Env, source: SourceName): Promise<Sna
   if (source !== "realtime" && env.PULSE_DATA) {
     return env.PULSE_DATA.get<Snapshot<T>>(KV_PREFIX + source, "json");
   }
-  const response = await caches.default.match(new Request(CACHE_ORIGIN + source));
+  const response = await caches.default.match(snapshotCacheRequest(env, source));
   if (!response) return null;
   try {
     return (await response.json()) as Snapshot<T>;
@@ -61,7 +68,7 @@ async function writeSnapshot<T>(env: Env, source: SourceName, snapshot: Snapshot
     return;
   }
   await caches.default.put(
-    new Request(CACHE_ORIGIN + source),
+    snapshotCacheRequest(env, source),
     new Response(body, {
       headers: { "Content-Type": "application/json", "Cache-Control": `max-age=${REALTIME_CACHE_SECONDS}` },
     }),

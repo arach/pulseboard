@@ -5,7 +5,11 @@ import {
   buildQuotaSummary,
   collectPropertyQuotas,
   mergeArrivals,
+  mergeEvents,
+  mergePages,
   parseArrivalRows,
+  parseEventRows,
+  parsePageRows,
   parseRealtimeRows,
   sanitizeQuota,
 } from "../src/aggregate";
@@ -169,5 +173,47 @@ describe("arrivals", () => {
     const a = (minutesAgo: number, activeUsers: number, city = "X") => ({ city, country: "Y", property: "p", minutesAgo, activeUsers });
     const merged = mergeArrivals([[a(5, 1, "late"), a(0, 1, "quiet")], [a(0, 3, "busy"), a(1, 0, "empty")]], 2);
     expect(merged.map((r) => r.city)).toEqual(["busy", "quiet"]);
+  });
+});
+
+describe("pages", () => {
+  const property = { id: "1", name: "a.dev" };
+
+  it("parses page titles with active users and views", () => {
+    const rows = parsePageRows(
+      [
+        { dimensionValues: [{ value: "Pricing" }], metricValues: [{ value: "4" }, { value: "9" }] },
+        { dimensionValues: [{ value: "" }], metricValues: [{ value: "1" }] },
+      ],
+      property,
+    );
+    expect(rows[0]).toEqual({ title: "Pricing", property: "a.dev", propertyId: "1", activeUsers: 4, views: 9 });
+    expect(rows[1]).toMatchObject({ title: "(not set)", activeUsers: 1, views: 0 });
+  });
+
+  it("merges busiest first across properties, breaks ties by views, drops idle pages and caps", () => {
+    const p = (title: string, activeUsers: number, views: number) => ({ title, property: "p", propertyId: "1", activeUsers, views });
+    const merged = mergePages([[p("a", 2, 3), p("idle", 0, 5)], [p("b", 5, 1), p("c", 2, 8)]], 3);
+    expect(merged.map((r) => r.title)).toEqual(["b", "c", "a"]);
+  });
+});
+
+describe("events", () => {
+  it("parses minute, event and page rows for one property", () => {
+    const rows = parseEventRows(
+      [
+        { dimensionValues: [{ value: "02" }, { value: "click" }], metricValues: [{ value: "3" }] },
+        { dimensionValues: [{ value: "x" }, { value: "" }, { value: "" }], metricValues: [] },
+      ],
+      { id: "1", name: "a.dev" },
+    );
+    expect(rows[0]).toEqual({ minutesAgo: 2, eventName: "click", property: "a.dev", propertyId: "1", count: 3 });
+    expect(rows[1]).toMatchObject({ minutesAgo: 0, eventName: "(not set)", count: 0 });
+  });
+
+  it("merges newest minute first, busiest first within a minute, drops empty rows and caps", () => {
+    const e = (minutesAgo: number, count: number, eventName: string) => ({ minutesAgo, eventName, property: "p", propertyId: "1", count });
+    const merged = mergeEvents([[e(3, 9, "old"), e(0, 1, "quiet")], [e(0, 4, "busy"), e(1, 0, "empty")]], 2);
+    expect(merged.map((r) => r.eventName)).toEqual(["busy", "quiet"]);
   });
 });

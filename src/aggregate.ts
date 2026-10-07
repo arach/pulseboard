@@ -1,4 +1,4 @@
-import type { PropertyQuotaEntry, QuotaMetadata, QuotaSummary, RealtimeArrival } from "./types";
+import type { PropertyQuotaEntry, QuotaMetadata, QuotaSummary, RealtimeArrival, RealtimeEvent, RealtimePage } from "./types";
 
 export function aggregatePropertyResults(
   results: Array<{
@@ -212,5 +212,61 @@ export function mergeArrivals(lists: RealtimeArrival[][], limit = ARRIVALS_LIMIT
     .flat()
     .filter((a) => a.activeUsers > 0)
     .sort((a, b) => a.minutesAgo - b.minutesAgo || b.activeUsers - a.activeUsers)
+    .slice(0, limit);
+}
+
+export const PAGES_LIMIT = 15;
+
+export function parsePageRows(
+  rows: Array<{
+    dimensionValues?: Array<{ value: string }>;
+    metricValues?: Array<{ value: string }>;
+  }> | undefined,
+  property: { id: string; name: string },
+): RealtimePage[] {
+  if (!rows) return [];
+  return rows.map((row) => ({
+    title: row.dimensionValues?.[0]?.value || "(not set)",
+    property: property.name,
+    propertyId: property.id,
+    activeUsers: parseInt(row.metricValues?.[0]?.value ?? "0", 10) || 0,
+    views: parseInt(row.metricValues?.[1]?.value ?? "0", 10) || 0,
+  }));
+}
+
+/** Busiest first across properties, ties broken by views, capped for the panel. */
+export function mergePages(lists: RealtimePage[][], limit = PAGES_LIMIT): RealtimePage[] {
+  return lists
+    .flat()
+    .filter((p) => p.activeUsers > 0)
+    .sort((a, b) => b.activeUsers - a.activeUsers || b.views - a.views)
+    .slice(0, limit);
+}
+
+export const EVENTS_LIMIT = 80;
+
+export function parseEventRows(
+  rows: Array<{
+    dimensionValues?: Array<{ value: string }>;
+    metricValues?: Array<{ value: string }>;
+  }> | undefined,
+  property: { id: string; name: string },
+): RealtimeEvent[] {
+  if (!rows) return [];
+  return rows.map((row) => ({
+    minutesAgo: parseInt(row.dimensionValues?.[0]?.value ?? "0", 10) || 0,
+    eventName: row.dimensionValues?.[1]?.value || "(not set)",
+    property: property.name,
+    propertyId: property.id,
+    count: parseInt(row.metricValues?.[0]?.value ?? "0", 10) || 0,
+  }));
+}
+
+/** Newest minute first, busiest first within a minute, capped for the log. */
+export function mergeEvents(lists: RealtimeEvent[][], limit = EVENTS_LIMIT): RealtimeEvent[] {
+  return lists
+    .flat()
+    .filter((e) => e.count > 0)
+    .sort((a, b) => a.minutesAgo - b.minutesAgo || b.count - a.count)
     .slice(0, limit);
 }

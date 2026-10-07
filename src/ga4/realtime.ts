@@ -4,7 +4,11 @@ import {
   buildQuotaSummary,
   collectPropertyQuotas,
   mergeArrivals,
+  mergeEvents,
+  mergePages,
   parseArrivalRows,
+  parseEventRows,
+  parsePageRows,
   parseRealtimeRows,
   sanitizeQuota,
 } from "../aggregate";
@@ -17,6 +21,8 @@ import type {
   PropertyFetchResult,
   PropertyQuotaEntry,
   RealtimeArrival,
+  RealtimeEvent,
+  RealtimePage,
   RealtimePayload,
 } from "../types";
 import { getGoogleAccessToken } from "./auth";
@@ -81,13 +87,22 @@ export async function fetchPropertyRealtime(
     });
 
     const { totalActiveUsers, countries } = parseRealtimeRows(report.rows);
-    const arrivals = totalActiveUsers > 0 ? await fetchPropertyArrivals(property, accessToken) : [];
+    const [arrivals, pages, events] =
+      totalActiveUsers > 0
+        ? await Promise.all([
+            fetchPropertyArrivals(property, accessToken),
+            fetchPropertyPages(property, accessToken),
+            fetchPropertyEvents(property, accessToken),
+          ])
+        : [[], [], []];
 
     return {
       property,
       activeUsers: totalActiveUsers,
       countries,
       arrivals,
+      pages,
+      events,
       quota: sanitizeQuota(report.propertyQuota),
       status: "ok",
     };
@@ -115,14 +130,18 @@ export async function fetchPropertyRealtime(
   }
 }
 
+type Property = (typeof PROPERTIES)[number];
+
 /**
- * Best-effort city × minute breakdown for the arrivals ticker. Runs only when the
- * property has active users, and never fails the property: the ticker is decoration.
+ * Best-effort extra realtime report. Runs only when the property has active
+ * users and never fails the property: a missing breakdown just renders empty.
  */
-async function fetchPropertyArrivals(
-  property: (typeof PROPERTIES)[number],
+async function fetchExtraReport(
+  property: Property,
   accessToken: string,
-): Promise<RealtimeArrival[]> {
+  event: string,
+  body: object,
+): Promise<Ga4RealtimeReportResponse | null> {
   try {
     const response = await fetch(
       `https://analyticsdata.googleapis.com/v1beta/properties/${property.id}:runRealtimeReport`,
@@ -132,34 +151,62 @@ async function fetchPropertyArrivals(
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          dimensions: [{ name: "city" }, { name: "country" }, { name: "minutesAgo" }],
-          metrics: [{ name: "activeUsers" }],
-          orderBys: [{ dimension: { dimensionName: "minutesAgo", orderType: "NUMERIC" } }],
-          limit: 25,
-        }),
+        body: JSON.stringify(body),
       },
     );
     if (!response.ok) {
-      logUpstreamError("ga4_arrivals_fetch_failed", {
+      logUpstreamError(event, {
         propertyId: property.id,
         propertyName: property.name,
         status: response.status,
         detail: sanitizeForLog(await response.text()),
       });
-      return [];
+      return null;
     }
-    const report = (await response.json()) as Ga4RealtimeReportResponse;
-    return parseArrivalRows(report.rows, property.name);
+    return (await response.json()) as Ga4RealtimeReportResponse;
   } catch (error) {
-    logUpstreamError("ga4_arrivals_fetch_failed", {
+    logUpstreamError(event, {
       propertyId: property.id,
       propertyName: property.name,
       status: 0,
       detail: sanitizeForLog(error instanceof Error ? error.message : "Unknown error"),
     });
-    return [];
+    return null;
   }
+}
+
+/** City × minute breakdown for the arrivals ticker. */
+async function fetchPropertyArrivals(property: Property, accessToken: string): Promise<RealtimeArrival[]> {
+  const report = await fetchExtraReport(property, accessToken, "ga4_arrivals_fetch_failed", {
+    dimensions: [{ name: "city" }, { name: "country" }, { name: "minutesAgo" }],
+    metrics: [{ name: "activeUsers" }],
+    orderBys: [{ dimension: { dimensionName: "minutesAgo", orderType: "NUMERIC" } }],
+    limit: 25,
+  });
+  return report ? parseArrivalRows(report.rows, property.name) : [];
+}
+
+/** Page titles people are on right now, busiest first. */
+async function fetchPropertyPages(property: Property, accessToken: string): Promise<RealtimePage[]> {
+  const report = await fetchExtraReport(property, accessToken, "ga4_pages_fetch_failed", {
+    dimensions: [{ name: "unifiedScreenName" }],
+    metrics: [{ name: "activeUsers" }, { name: "screenPageViews" }],
+    orderBys: [{ metric: { metricName: "activeUsers" }, desc: true }],
+    limit: 10,
+  });
+  return report ? parsePageRows(report.rows, property) : [];
+}
+
+/** Event counts per minute and page for the live log, newest first. */
+async function fetchPropertyEvents(property: Property, accessToken: string): Promise<RealtimeEvent[]> {
+  const report = await fetchExtraReport(property, accessToken, "ga4_events_fetch_failed", {
+    // Realtime rejects eventName together with unifiedScreenName, so no page here.
+    dimensions: [{ name: "minutesAgo" }, { name: "eventName" }],
+    metrics: [{ name: "eventCount" }],
+    orderBys: [{ dimension: { dimensionName: "minutesAgo", orderType: "NUMERIC" } }],
+    limit: 40,
+  });
+  return report ? parseEventRows(report.rows, property) : [];
 }
 
 export function buildRealtimePayload(
@@ -188,6 +235,8 @@ export function buildRealtimePayload(
     properties: aggregated.properties,
     countries: aggregateCountries(allCountries, aggregated.totalActiveUsers),
     arrivals: mergeArrivals(results.filter((r) => r.status === "ok").map((r) => r.arrivals ?? [])),
+    pages: mergePages(results.filter((r) => r.status === "ok").map((r) => r.pages ?? [])),
+    events: mergeEvents(results.filter((r) => r.status === "ok").map((r) => r.events ?? [])),
     fetchedAt: new Date().toISOString(),
     cache: cacheMeta,
     partialFailure: aggregated.partialFailure,
